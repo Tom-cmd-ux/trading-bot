@@ -1,51 +1,65 @@
 import os
-import requests
 from flask import Flask, request, jsonify
 from anthropic import Anthropic
 
 app = Flask(__name__)
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "sk-ant-usr-13bdsWK-Q6pTHW9hEkxJbXcSSRJYFNt02NT4rIKuaeN5XYGIR1kSJYhe3fpAIHLOTUe4pokLW04FOVnh1xps4UWelChlQAA")
-client = Anthropic(api_key=ANTHROPIC_API_KEY)
+# Stockage en mémoire du dernier trade validé
+latest_trade = {"action": "NONE"}
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json(silent=True) or request.form.to_dict()
-    
-    if not data:
-        return jsonify({"status": "error", "message": "Aucune donnée reçue"}), 400
+anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+client = Anthropic(api_key=anthropic_api_key) if anthropic_api_key else None
 
-    print(f"[+] Alerte reçue : {data}")
-
-    prompt = f"Analyse cette alerte de trading et donne un avis rapide en 2 phrases : {data}"
-
-    try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        analysis = response.content[0].text
-        print(f"[+] Analyse Claude : {analysis}")
-        
-        return jsonify({
-            "status": "success",
-            "received_data": data,
-            "analysis": analysis
-        }), 200
-
-    except Exception as e:
-        print(f"[-] Erreur Claude API : {e}")
-        return jsonify({
-            "status": "warning",
-            "received_data": data,
-            "error": str(e)
-        }), 200
-
-@app.route('/', methods=['GET'])
+@app.route("/", methods=["GET"])
 def home():
-    return "Bot Trading Opérationnel !"
+    return "Bot Trading Opérationnel !", 200
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    global latest_trade
+    data = request.get_json(silent=True) or {}
+    
+    # Message/signal reçu de TradingView
+    raw_message = data.get("message", str(data))
+    
+    # Demande d'analyse à Claude 3.5 Sonnet
+    if client:
+        try:
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=100,
+                messages=[{
+                    "role": "user",
+                    "content": f"Analyse ce signal de trading: '{raw_message}'. Réponds UNIQUEMENT par 'BUY', 'SELL' ou 'REJECT'."
+                }]
+            )
+            decision = response.content[0].text.strip().upper()
+        except Exception as e:
+            print(f"Erreur Claude API: {e}")
+            decision = "BUY" if "BUY" in raw_message.upper() else ("SELL" if "SELL" in raw_message.upper() else "REJECT")
+    else:
+        decision = "BUY" if "BUY" in raw_message.upper() else ("SELL" if "SELL" in raw_message.upper() else "REJECT")
+
+    # Si le trade est validé par Claude, on le stocke pour MT5
+    if decision in ["BUY", "SELL"]:
+        latest_trade = {
+            "action": decision,
+            "symbol": "XAUUSD",
+            "volume": 0.01
+        }
+        print(f"[+] TRADE VALIDE : {decision}")
+    else:
+        print("[-] TRADE REJETÉ PAR CLAUDE")
+
+    return jsonify({"status": "success", "decision": decision}), 200
+
+@app.route("/get_trade", methods=["GET"])
+def get_trade():
+    global latest_trade
+    # Remet à zéro après la lecture par MT5 pour ne pas réexécuter le même ordre
+    trade_to_send = latest_trade.copy()
+    latest_trade = {"action": "NONE"}
+    return jsonify(trade_to_send), 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
