@@ -5,8 +5,8 @@ import json
 
 app = Flask(__name__)
 
-# La clé API est directement lue depuis l'environnement de Render
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+# Initialisation du client Anthropic avec ta clé API
+client = anthropic.Anthropic(api_key="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")
 
 # Stockage en mémoire du dernier trade validé (pour que MT5 puisse venir le chercher)
 latest_trade = {"action": "NONE"}
