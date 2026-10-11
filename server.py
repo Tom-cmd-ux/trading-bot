@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, request
 import requests
 import json
+import re
 
 app = Flask(__name__)
 
@@ -51,22 +52,21 @@ def webhook():
 
         resp_data = resp.json()
 
-        # Recherche du bloc de contenu de type "text" dans la réponse
+        # Extraire le bloc de texte de Claude
         raw_text = ""
         for block in resp_data.get("content", []):
             if block.get("type") == "text":
                 raw_text = block.get("text", "")
                 break
 
-        # Nettoyage des balises markdown si présentes
-        content = raw_text.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
+        # Extraction propre du JSON entre d'éventuelles balises ```
+        cleaned_text = raw_text.strip()
+        match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+        if match:
+            cleaned_text = match.group(0)
 
         try:
-            trade_plan = json.loads(content)
+            trade_plan = json.loads(cleaned_text)
         except Exception:
             trade_plan = {"status": "RAW_OUTPUT", "raw_response": raw_text}
 
