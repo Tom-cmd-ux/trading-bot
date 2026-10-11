@@ -1,62 +1,65 @@
 import os
 from flask import Flask, jsonify, request
-import anthropic
+import requests
 import json
 
 app = Flask(__name__)
 
-# Initialisation du client Anthropic avec la version d'API explicite
-client = anthropic.Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY"),
-    default_headers={"anthropic-version": "2023-06-01"}
-)
+LATEST_TRADE = {"action": "NONE"}
 
-latest_trade = {"action": "NONE"}
-
-SYSTEM_PROMPT = """
-Tu es un assistant de trading algorithmique expert spécialisé exclusivement sur l'or (XAUUSD).
-Analyse la configuration et rends ta réponse sous un format JSON strict (SANS AUCUN TEXTE AUTRE QUE LE JSON).
-Format attendu :
+SYSTEM_PROMPT = """Tu es un assistant de trading algorithmique expert sur l'or (XAUUSD). Réponds UNIQUEMENT au format JSON strict :
 {
     "status": "VALID",
     "direction": "BUY",
-    "zone_attente": "Niveau surveillé",
-    "declencheur": "Description du déclencheur",
+    "zone_attente": "Niveau",
+    "declencheur": "Signal",
     "entree": 0.00,
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
     "risque_rendement": 0.0,
     "validation_macro": "OK"
-}
-"""
+}"""
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         ticker = data.get("ticker", "XAUUSD")
         price = data.get("price", 0.0)
-        message = data.get("message", "Pas de message")
+        message = data.get("message", "Alerte")
 
-        user_prompt = f"Alerte reçue - Ticker: {ticker}, Prix actuel: {price}, Message: {message}."
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
 
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=300,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
+        payload = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 300,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
+        }
 
-        content = response.content[0].text.strip()
+        resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        
+        if resp.status_code != 200:
+            return jsonify({"status": "ERROR", "anthropic_error": resp.text}), 400
+
+        resp_data = resp.json()
+        content = resp_data["content"][0]["text"].strip()
+        
         if content.startswith("```json"):
             content = content[7:-3].strip()
         elif content.startswith("```"):
             content = content[3:-3].strip()
 
         trade_plan = json.loads(content)
-        global latest_trade
-        latest_trade = trade_plan
+        global LATEST_TRADE
+        LATEST_TRADE = trade_plan
 
         return jsonify({"status": "SUCCESS", "trade_plan": trade_plan}), 200
 
@@ -65,8 +68,8 @@ def webhook():
 
 @app.route('/trade', methods=['GET'])
 def get_latest_trade():
-    global latest_trade
-    return jsonify(latest_trade), 200
+    global LATEST_TRADE
+    return jsonify(LATEST_TRADE), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
