@@ -60,14 +60,12 @@ def webhook():
                 raw_text = block.get("text", "")
                 break
 
-        # Nettoyage rigoureux des balises markdown
         cleaned_text = raw_text.strip()
         cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
         cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
         cleaned_text = re.sub(r'\s*```$', '', cleaned_text)
         cleaned_text = cleaned_text.strip()
 
-        # Isoler uniquement la portion JSON entre les accolades { ... }
         start_idx = cleaned_text.find('{')
         end_idx = cleaned_text.rfind('}')
         
@@ -75,8 +73,12 @@ def webhook():
             json_str = cleaned_text[start_idx:end_idx+1]
             try:
                 trade_plan = json.loads(json_str)
-            except Exception as e:
-                trade_plan = {"status": "PARSE_ERROR", "raw_response": raw_text, "error": str(e)}
+            except Exception:
+                try:
+                    unescaped = json_str.replace('\\"', '"').replace('\\n', ' ')
+                    trade_plan = json.loads(unescaped)
+                except Exception as e:
+                    trade_plan = {"status": "PARSE_ERROR", "raw_response": raw_text, "error": str(e)}
         else:
             trade_plan = {"status": "RAW_OUTPUT", "raw_response": raw_text}
 
