@@ -45,7 +45,8 @@ def webhook():
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
         }
 
-        resp = requests.post("[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)", headers=headers, json=payload)
+        url = "https://api.anthropic.com/v1/messages"
+        resp = requests.post(url, headers=headers, json=payload)
         
         if resp.status_code != 200:
             return jsonify({"status": "ERROR", "anthropic_error": resp.text}), 400
