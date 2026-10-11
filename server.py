@@ -50,27 +50,12 @@ def webhook():
             return jsonify({"status": "ERROR", "anthropic_error": resp.text}), 400
 
         resp_data = resp.json()
-        
-        # Extraction sécurisée de la réponse texte de Claude
-        content = ""
-        if "content" in resp_data and isinstance(resp_data["content"], list) and len(resp_data["content"]) > 0:
-            content = resp_data["content"][0].get("text", "")
-        
-        content = content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
 
-        try:
-            trade_plan = json.loads(content)
-        except Exception:
-            trade_plan = {"status": "RAW_OUTPUT", "raw_response": content}
-
+        # On retourne directement tout le JSON brut de l'API pour voir sa structure exacte
         global LATEST_TRADE
-        LATEST_TRADE = trade_plan
+        LATEST_TRADE = resp_data
 
-        return jsonify({"status": "SUCCESS", "trade_plan": trade_plan}), 200
+        return jsonify({"status": "SUCCESS", "full_anthropic_response": resp_data}), 200
 
     except Exception as e:
         return jsonify({"status": "ERROR", "error": str(e)}), 400
