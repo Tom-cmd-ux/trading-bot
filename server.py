@@ -5,41 +5,26 @@ import json
 
 app = Flask(__name__)
 
-# Initialisation sécurisée du client Anthropic via la variable d'environnement Render
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+# Initialisation standard du client Anthropic
+client = anthropic.Anthropic()
 
-# Stockage en mémoire du dernier trade validé (pour que MT5 puisse venir le chercher)
 latest_trade = {"action": "NONE"}
 
 SYSTEM_PROMPT = """
 Tu es un assistant de trading algorithmique expert spécialisé exclusivement sur l'or (XAUUSD).
-L'or réagit aux zones de liquidité institutionnelles. Ne te limite pas à une seule unité de temps fixe : analyse la structure selon les données reçues.
-Lorsque tu reçois une alerte de TradingView, analyse la configuration et rends ta réponse sous un format JSON strict (SANS AUCUN TEXTE AUTRE QUE LE JSON).
-Le format JSON de sortie doit être exactement celui-ci :
+Analyse la configuration et rends ta réponse sous un format JSON strict (SANS AUCUN TEXTE AUTRE QUE LE JSON).
+Format attendu :
 {
     "status": "VALID",
     "direction": "BUY",
-    "zone_attente": "Niveau de référence ou de liquidité surveillé",
-    "declencheur": "Description du déclencheur (ex: sweep de liquidité, cassure de structure, rejet sur unité de temps adaptée)",
+    "zone_attente": "Niveau surveillé",
+    "declencheur": "Description du déclencheur",
     "entree": 0.00,
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
     "risque_rendement": 0.0,
     "validation_macro": "OK"
-}
-Si la configuration est non validée ou trop risquée, renvoie :
-{
-    "status": "INVALID",
-    "direction": "NONE",
-    "zone_attente": "",
-    "declencheur": "",
-    "entree": 0.0,
-    "stop_loss": 0.0,
-    "cible_1": 0.0,
-    "cible_2": 0.0,
-    "risque_rendement": 0.0,
-    "validation_macro": "REFUSED"
 }
 """
 
@@ -51,10 +36,11 @@ def webhook():
         price = data.get("price", 0.0)
         message = data.get("message", "Pas de message")
 
-        user_prompt = f"Alerte reçue - Ticker: {ticker}, Prix actuel: {price}, Message: {message}. Analyse cette configuration."
+        user_prompt = f"Alerte reçue - Ticker: {ticker}, Prix actuel: {price}, Message: {message}."
 
+        # Appel direct avec le modèle de base le plus stable
         response = client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=300,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}]
@@ -67,7 +53,6 @@ def webhook():
             content = content[3:-3].strip()
 
         trade_plan = json.loads(content)
-        
         global latest_trade
         latest_trade = trade_plan
 
