@@ -1,11 +1,3 @@
-{"model": "claude-opus-5-5", "max_tokens": 1024, "messages": [{"role": "user", "content": "Hello, world!"}]}
-```[cite: 9]
-
-L'erreur `404 not_found_error` sur les requêtes[cite: 9] signifie simplement que les anciens identifiants (`claude-3-5-sonnet...` ou `claude-3-haiku...`) ne sont pas activés sur ton organisation, mais **`claude-opus-5-5`** est bien le nom du modèle configuré et autorisé sur ton compte[cite: 9].
-
-Voici le code mis à jour pour `server.py` qui utilise exactement **`claude-opus-5-5`**[cite: 9] :
-
-```python
 import os
 from flask import Flask, jsonify, request
 import requests
