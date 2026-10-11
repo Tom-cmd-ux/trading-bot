@@ -38,7 +38,7 @@ def webhook():
         }
 
         payload = {
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-3-5-sonnet-latest",
             "max_tokens": 300,
             "system": SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
