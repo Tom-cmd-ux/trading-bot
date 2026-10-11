@@ -50,14 +50,23 @@ def webhook():
             return jsonify({"status": "ERROR", "anthropic_error": resp.text}), 400
 
         resp_data = resp.json()
-        content = resp_data["content"][0]["text"].strip()
         
+        # Extraction sécurisée de la réponse texte de Claude
+        content = ""
+        if "content" in resp_data and isinstance(resp_data["content"], list) and len(resp_data["content"]) > 0:
+            content = resp_data["content"][0].get("text", "")
+        
+        content = content.strip()
         if content.startswith("```json"):
             content = content[7:-3].strip()
         elif content.startswith("```"):
             content = content[3:-3].strip()
 
-        trade_plan = json.loads(content)
+        try:
+            trade_plan = json.loads(content)
+        except Exception:
+            trade_plan = {"status": "RAW_OUTPUT", "raw_response": content}
+
         global LATEST_TRADE
         LATEST_TRADE = trade_plan
 
