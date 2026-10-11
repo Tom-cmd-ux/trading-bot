@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 LATEST_TRADE = {"action": "NONE"}
 
-SYSTEM_PROMPT = """Tu es un assistant de trading algorithmique expert sur l'or (XAUUSD). Réponds UNIQUEMENT au format JSON strict :
+SYSTEM_PROMPT = """Tu es un assistant de trading algorithmique expert sur l'or (XAUUSD). Réponds UNIQUEMENT au format JSON strict, sans markdown ni texte additionnel :
 {
     "status": "VALID",
     "direction": "BUY",
@@ -45,29 +45,38 @@ def webhook():
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
         }
 
-        resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        resp = requests.post("[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)", headers=headers, json=payload)
         
         if resp.status_code != 200:
             return jsonify({"status": "ERROR", "anthropic_error": resp.text}), 400
 
         resp_data = resp.json()
 
-        # Extraire le bloc de texte de Claude
+        # Extraction du bloc de texte brut de Claude
         raw_text = ""
         for block in resp_data.get("content", []):
             if block.get("type") == "text":
                 raw_text = block.get("text", "")
                 break
 
-        # Extraction propre du JSON entre d'éventuelles balises ```
+        # Nettoyage rigoureux des balises markdown
         cleaned_text = raw_text.strip()
-        match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
-        if match:
-            cleaned_text = match.group(0)
+        cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
+        cleaned_text = re.sub(r'\s*```$', '', cleaned_text)
+        cleaned_text = cleaned_text.strip()
 
-        try:
-            trade_plan = json.loads(cleaned_text)
-        except Exception:
+        # Isoler uniquement la portion JSON entre les accolades { ... }
+        start_idx = cleaned_text.find('{')
+        end_idx = cleaned_text.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_str = cleaned_text[start_idx:end_idx+1]
+            try:
+                trade_plan = json.loads(json_str)
+            except Exception as e:
+                trade_plan = {"status": "PARSE_ERROR", "raw_response": raw_text, "error": str(e)}
+        else:
             trade_plan = {"status": "RAW_OUTPUT", "raw_response": raw_text}
 
         global LATEST_TRADE
