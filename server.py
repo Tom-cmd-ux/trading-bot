@@ -39,7 +39,7 @@ def webhook():
 
         payload = {
             "model": "claude-opus-5-5",
-            "max_tokens": 300,
+            "max_tokens": 600,
             "system": SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
         }
@@ -51,11 +51,29 @@ def webhook():
 
         resp_data = resp.json()
 
-        # On retourne directement tout le JSON brut de l'API pour voir sa structure exacte
-        global LATEST_TRADE
-        LATEST_TRADE = resp_data
+        # Recherche du bloc de contenu de type "text" dans la réponse
+        raw_text = ""
+        for block in resp_data.get("content", []):
+            if block.get("type") == "text":
+                raw_text = block.get("text", "")
+                break
 
-        return jsonify({"status": "SUCCESS", "full_anthropic_response": resp_data}), 200
+        # Nettoyage des balises markdown si présentes
+        content = raw_text.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+
+        try:
+            trade_plan = json.loads(content)
+        except Exception:
+            trade_plan = {"status": "RAW_OUTPUT", "raw_response": raw_text}
+
+        global LATEST_TRADE
+        LATEST_TRADE = trade_plan
+
+        return jsonify({"status": "SUCCESS", "trade_plan": trade_plan}), 200
 
     except Exception as e:
         return jsonify({"status": "ERROR", "error": str(e)}), 400
