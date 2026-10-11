@@ -5,8 +5,11 @@ import json
 
 app = Flask(__name__)
 
-# Initialisation standard du client Anthropic
-client = anthropic.Anthropic()
+# Initialisation du client Anthropic avec la version d'API explicite
+client = anthropic.Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY"),
+    default_headers={"anthropic-version": "2023-06-01"}
+)
 
 latest_trade = {"action": "NONE"}
 
@@ -38,7 +41,6 @@ def webhook():
 
         user_prompt = f"Alerte reçue - Ticker: {ticker}, Prix actuel: {price}, Message: {message}."
 
-        # Appel direct avec le modèle de base le plus stable
         response = client.messages.create(
             model="claude-3-5-sonnet-20241022",
             max_tokens=300,
