@@ -54,7 +54,7 @@ def webhook():
         user_prompt = f"Alerte reçue - Ticker: {ticker}, Prix actuel: {price}, Message: {message}. Analyse cette configuration."
 
         response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-haiku-20240307",
             max_tokens=300,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}]
