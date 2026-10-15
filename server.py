@@ -53,6 +53,11 @@ def process_claude_async(ticker, price, message):
                     raw_text = block.get("text", "")
                     break
 
+            # --- PRINT POUR AFFICHER LA RÉPONSE BRUTE DE CLAUDE DANS LES LOGS RENDER ---
+            print("\n=================== [CLAUDE AI RESPONSE RAW] ===================")
+            print(raw_text)
+            print("=================================================================\n")
+
             # Nettoyage des balises Markdown
             cleaned_text = raw_text.strip()
             cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
@@ -92,6 +97,14 @@ def process_claude_async(ticker, price, message):
                 }
 
             LATEST_TRADE = trade_plan
+
+            # --- PRINT POUR AFFICHER LA DÉCISION FINALE PARSÉE DANS LES LOGS RENDER ---
+            print("\n================ [CLAUDE AI DECISION PARSED] ================")
+            print(json.dumps(LATEST_TRADE, indent=2, ensure_ascii=False))
+            print("=============================================================\n")
+
+        else:
+            print(f"Erreur API Anthropic (Status {resp.status_code}) : {resp.text}")
 
     except Exception as e:
         print(f"Erreur arrière-plan Claude : {e}")
