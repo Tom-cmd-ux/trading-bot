@@ -78,21 +78,17 @@ def process_claude_async(ticker, price, message):
                 except Exception:
                     try:
                         trade_plan = json.loads(json_str)
-                    except Exception:
-                        # Secours garanti en JSON valide si le parseur bloque
+                    except Exception as parse_err:
+                        # En cas d'erreur irrécupérable de syntaxe JSON
                         trade_plan = {
-                            "status": "VALID",
-                            "direction": "BUY",
-                            "zone_attente": "2640.00 - 2650.00",
-                            "declencheur": "Validation technique H1",
+                            "status": "ERROR",
+                            "message": f"Erreur de parsing JSON: {parse_err}",
                             "raw_message": raw_text
                         }
             else:
                 trade_plan = {
-                    "status": "VALID",
-                    "direction": "BUY",
-                    "zone_attente": "2640.00 - 2650.00",
-                    "declencheur": "Validation technique",
+                    "status": "ERROR",
+                    "message": "Aucun bloc JSON trouvé dans la réponse",
                     "raw_message": raw_text
                 }
 
