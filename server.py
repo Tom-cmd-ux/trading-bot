@@ -61,7 +61,7 @@ def process_claude_async(ticker, price, message):
 
             trade_plan = None
 
-            # SÉCURITÉ : Si Claude renvoie du vide, on traite avec le repli
+            # SÉCURITÉ : Si Claude renvoie du texte, on le parse
             if raw_text.strip():
                 # Nettoyage des balises Markdown
                 cleaned_text = raw_text.strip()
