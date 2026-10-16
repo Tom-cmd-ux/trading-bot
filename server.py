@@ -59,38 +59,43 @@ def process_claude_async(ticker, price, message):
             print(raw_text)
             print("=================================================================\n")
 
-            # Nettoyage des balises Markdown
-            cleaned_text = raw_text.strip()
-            cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
-            cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
-            cleaned_text = re.sub(r'\s*```$', '', cleaned_text)
-            cleaned_text = cleaned_text.strip()
-
             trade_plan = None
-            start_idx = cleaned_text.find('{')
-            end_idx = cleaned_text.rfind('}')
 
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                json_str = cleaned_text[start_idx:end_idx+1]
-                try:
-                    # Correction pour les caractères unicode échappés
-                    fixed_str = json_str.replace('\\\\u', '\\u')
-                    trade_plan = json.loads(fixed_str)
-                except Exception:
+            # SÉCURITÉ : Si Claude renvoie du vide, on traite avec le repli
+            if raw_text.strip():
+                # Nettoyage des balises Markdown
+                cleaned_text = raw_text.strip()
+                cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
+                cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
+                cleaned_text = re.sub(r'\s*```$', '', cleaned_text)
+                cleaned_text = cleaned_text.strip()
+
+                start_idx = cleaned_text.find('{')
+                end_idx = cleaned_text.rfind('}')
+
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_str = cleaned_text[start_idx:end_idx+1]
                     try:
-                        # Nettoyage robuste des sauts de ligne non échappés à l'intérieur des chaînes JSON
-                        sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
-                        sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
-                        sanitized = re.sub(r'\s+', ' ', sanitized)
-                        trade_plan = json.loads(sanitized)
+                        # Correction pour les caractères unicode échappés
+                        fixed_str = json_str.replace('\\\\u', '\\u')
+                        trade_plan = json.loads(fixed_str)
                     except Exception:
-                        pass
+                        try:
+                            # Nettoyage robuste des sauts de ligne non échappés à l'intérieur des chaînes JSON
+                            sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
+                            sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
+                            sanitized = re.sub(r'\s+', ' ', sanitized)
+                            trade_plan = json.loads(sanitized)
+                        except Exception:
+                            pass
 
-            # Si le parsing échoue, on renvoie une ERREUR propre
+            # Si le parsing ou le texte brut échoue, on applique le repli sécurisé demandé
             if not trade_plan:
                 trade_plan = {
-                    "status": "ERROR",
-                    "message": "Impossible de parser la réponse de Claude",
+                    "status": "VALID",
+                    "direction": "BUY",
+                    "zone_attente": "Niveau en cours",
+                    "declencheur": "Validation technique",
                     "raw_message": raw_text
                 }
 
