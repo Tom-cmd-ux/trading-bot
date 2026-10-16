@@ -78,7 +78,7 @@ def process_claude_async(ticker, price, message):
                     trade_plan = json.loads(fixed_str)
                 except Exception:
                     try:
-                        # Nettoyage des sauts de ligne non échappés à l'intérieur du JSON
+                        # Nettoyage robuste des sauts de ligne non échappés à l'intérieur des chaînes JSON
                         sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
                         sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
                         sanitized = re.sub(r'\s+', ' ', sanitized)
@@ -86,7 +86,7 @@ def process_claude_async(ticker, price, message):
                     except Exception:
                         pass
 
-            # Si le parsing échoue, on renvoie une ERREUR propre (plus de faux fallback à 2640)
+            # Si le parsing échoue, on renvoie une ERREUR propre
             if not trade_plan:
                 trade_plan = {
                     "status": "ERROR",
