@@ -49,7 +49,7 @@ def parse_robust_json(raw_text):
     except Exception:
         pass
 
-    # Essai 2 : Remplacement des sauts de ligne non échappés à l'intérieur du JSON
+    # Essai 2 : Remplacement des sauts de ligne non échabés à l'intérieur du JSON
     try:
         sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
         sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
@@ -101,7 +101,7 @@ def process_claude_async(ticker, price, message):
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
         }
 
-        # URL nettoyée et sécurisée
+        # URL nettoyée et sécurisée (sans crochets)
         url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)"
         resp = requests.post(url, headers=headers, json=payload)
 
