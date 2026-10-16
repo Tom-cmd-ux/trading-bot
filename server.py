@@ -101,7 +101,7 @@ def process_claude_async(ticker, price, message):
             "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
         }
 
-        # URL pure sans aucune fioriture
+        # URL nettoyée et sécurisée
         url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)"
         resp = requests.post(url, headers=headers, json=payload)
 
