@@ -102,7 +102,7 @@ def process_claude_async(ticker, price, message):
         }
 
         # URL nettoyée et sécurisée (sans crochets)
-        url = "[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)"
+        url = "https://api.anthropic.com" + "/v1/messages"
         resp = requests.post(url, headers=headers, json=payload)
 
         if resp.status_code == 200:
