@@ -9,19 +9,29 @@ app = Flask(__name__)
 
 LATEST_TRADE = {"action": "NONE"}
 
-SYSTEM_PROMPT = """Tu es un assistant de trading algorithmique expert sur l'or (XAUUSD). Réponds UNIQUEMENT au format JSON strict, sans markdown ni texte additionnel. Utilise des caractères standards :
+# --- SYSTEM PROMPT MIS À JOUR (AVEC STRUCTURATION MARKET / LIMIT) ---
+SYSTEM_PROMPT = """Tu es un gestionnaire de risque et analyste senior sur XAUUSD.
+Ta mission est de filtrer strictement les alertes TradingView reçues.
+
+Analyse l'alerte et renvoie UNIQUEMENT un JSON strict avec la structure suivante (sans markdown ni texte additionnel, avec des caracteres standards) :
 {
-    "status": "VALID",
-    "direction": "BUY",
-    "zone_attente": "Niveau",
-    "declencheur": "Signal",
-    "entree": 0.00,
+    "status": "VALID",               // "VALID" pour accepter, "INVALID" pour rejeter
+    "direction": "BUY",              // "BUY" ou "SELL"
+    "type_ordre": "MARKET",          // "MARKET" (entree immediate au prix actuel) ou "LIMIT" (attente pullback/retest)
+    "zone_attente": "Niveau precis", // Le niveau de prix vise ou "Au marche"
+    "declencheur": "Explication rapide",
+    "entree": 0.00,                  // Prix exact d'entree (prix actuel si MARKET, ou prix du pullback si LIMIT)
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
     "risque_rendement": 0.0,
     "validation_macro": "OK"
-}"""
+}
+
+REGLES D'ANALYSE CRUCIALES :
+1. Si le momentum ou la tendance est fort(e) et propre : privilegie type_ordre = "MARKET" au prix actuel pour ne pas rater le mouvement.
+2. Si le prix est dans une zone d'incertitude ou proche d'un obstacle immédiat : utilise type_ordre = "LIMIT" avec le prix exact d'entree attendu.
+3. Si le risque/rendement est mauvais (< 1.5) ou le signal suspect : passe status = "INVALID"."""
 
 def process_claude_async(ticker, price, message):
     global LATEST_TRADE
@@ -81,7 +91,7 @@ def process_claude_async(ticker, price, message):
                         trade_plan = json.loads(fixed_str)
                     except Exception:
                         try:
-                            # Nettoyage robuste des sauts de ligne non échappés à l'intérieur des chaînes JSON
+                            # Nettoyage robustes des sauts de ligne non échappés à l'intérieur des chaînes JSON
                             sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
                             sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
                             sanitized = re.sub(r'\s+', ' ', sanitized)
@@ -94,6 +104,7 @@ def process_claude_async(ticker, price, message):
                 trade_plan = {
                     "status": "VALID",
                     "direction": "BUY",
+                    "type_ordre": "MARKET",
                     "zone_attente": "Niveau en cours",
                     "declencheur": "Validation technique",
                     "raw_message": raw_text
