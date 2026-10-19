@@ -15,12 +15,12 @@ Ta mission est de filtrer strictement les alertes TradingView reçues.
 
 Analyse l'alerte et renvoie UNIQUEMENT un JSON strict avec la structure suivante (sans markdown ni texte additionnel, avec des caracteres standards) :
 {
-    "status": "VALID",               // "VALID" pour accepter, "INVALID" pour rejeter
-    "direction": "BUY",              // "BUY" ou "SELL"
-    "type_ordre": "MARKET",          // "MARKET" (entree immediate au prix actuel) ou "LIMIT" (attente pullback/retest)
+    "status": "VALID",                 // "VALID" pour accepter, "INVALID" pour rejeter
+    "direction": "BUY",                // "BUY" ou "SELL"
+    "type_ordre": "MARKET",            // "MARKET" (entree immediate au prix actuel) ou "LIMIT" (attente pullback/retest)
     "zone_attente": "Niveau precis", // Le niveau de prix vise ou "Au marche"
     "declencheur": "Explication rapide",
-    "entree": 0.00,                  // Prix exact d'entree (prix actuel si MARKET, ou prix du pullback si LIMIT)
+    "entree": 0.00,                    // Prix exact d'entree (prix actuel si MARKET, ou prix du pullback si LIMIT)
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
@@ -33,7 +33,7 @@ REGLES D'ANALYSE CRUCIALES :
 2. Si le prix est dans une zone d'incertitude ou proche d'un obstacle immédiat : utilise type_ordre = "LIMIT" avec le prix exact d'entree attendu.
 3. Si le risque/rendement est mauvais (< 1.5) ou le signal suspect : passe status = "INVALID"."""
 
-def process_claude_async(ticker, price, message):
+def process_claude_async(ticker, price, message, raw_payload):
     global LATEST_TRADE
     try:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -101,14 +101,26 @@ def process_claude_async(ticker, price, message):
 
             # Si le parsing ou le texte brut échoue, on applique le repli sécurisé demandé
             if not trade_plan:
+                action_dir = raw_payload.get("action", "BUY")
                 trade_plan = {
                     "status": "VALID",
-                    "direction": "BUY",
+                    "direction": action_dir,
                     "type_ordre": "MARKET",
                     "zone_attente": "Niveau en cours",
                     "declencheur": "Validation technique",
+                    "entree": float(price),
+                    "stop_loss": float(raw_payload.get("sl", 0.0)),
+                    "cible_1": float(raw_payload.get("tp", 0.0)),
                     "raw_message": raw_text
                 }
+
+            # SÉCURITÉ GARANTIE : Si un prix numérique manque ou vaut 0, on le complète avec le payload initial
+            if "entree" not in trade_plan or float(trade_plan.get("entree", 0.0)) == 0.0:
+                trade_plan["entree"] = float(price)
+            if "stop_loss" not in trade_plan or float(trade_plan.get("stop_loss", 0.0)) == 0.0:
+                trade_plan["stop_loss"] = float(raw_payload.get("sl", 0.0))
+            if "cible_1" not in trade_plan or float(trade_plan.get("cible_1", 0.0)) == 0.0:
+                trade_plan["cible_1"] = float(raw_payload.get("tp", 0.0))
 
             LATEST_TRADE = trade_plan
 
@@ -131,8 +143,8 @@ def webhook():
         price = data.get("price", 0.0)
         message = data.get("message", "Alerte")
 
-        # Lancement de l'analyse Claude en arrière-plan
-        threading.Thread(target=process_claude_async, args=(ticker, price, message)).start()
+        # Lancement de l'analyse Claude en arrière-plan avec transmission du payload brut
+        threading.Thread(target=process_claude_async, args=(ticker, price, message, data)).start()
 
         # Réponse immédiate à TradingView (< 50ms) pour éviter le timeout
         return jsonify({"status": "SUCCESS", "message": "Alerte reçue et en cours de traitement"}), 200
