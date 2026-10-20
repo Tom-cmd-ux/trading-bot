@@ -7,31 +7,31 @@ import re
 
 app = Flask(__name__)
 
-LATEST_TRADE = {"action": "NONE"}
+LATEST_TRADE = {"status": "INVALID", "action": "NONE"}
 
-# --- SYSTEM PROMPT MIS À JOUR (AVEC STRUCTURATION MARKET / LIMIT) ---
-SYSTEM_PROMPT = """Tu es un gestionnaire de risque et analyste senior sur XAUUSD.
-Ta mission est de filtrer strictement les alertes TradingView reçues.
+# --- SYSTEM PROMPT ULTRA-SÉLECTIF ET CONTEXTUEL ---
+SYSTEM_PROMPT = """Tu es un gestionnaire de risque et analyste senior intransigeant sur XAUUSD.
+Ta mission est de filtrer drastiquement les alertes TradingView. Ton rôle par défaut est de REJETER le trade sauf si les conditions techniques et le ratio de risque sont exceptionnels.
 
-Analyse l'alerte et renvoie UNIQUEMENT un JSON strict avec la structure suivante (sans markdown ni texte additionnel, avec des caracteres standards) :
+Analyse l'alerte et renvoie UNIQUEMENT un JSON strict avec la structure suivante (sans markdown ni texte additionnel) :
 {
-    "status": "VALID",                 // "VALID" pour accepter, "INVALID" pour rejeter
-    "direction": "BUY",                // "BUY" ou "SELL"
-    "type_ordre": "MARKET",            // "MARKET" (entree immediate au prix actuel) ou "LIMIT" (attente pullback/retest)
-    "zone_attente": "Niveau precis", // Le niveau de prix vise ou "Au marche"
+    "status": "INVALID",                 // "VALID" uniquement si le setup est parfait, sinon "INVALID" par défaut
+    "direction": "BUY",                  // "BUY" ou "SELL"
+    "type_ordre": "MARKET",              // "MARKET" ou "LIMIT"
+    "zone_attente": "Niveau precis",     // Le niveau de prix vise ou "Au marche"
     "declencheur": "Explication rapide",
-    "entree": 0.00,                    // Prix exact d'entree (prix actuel si MARKET, ou prix du pullback si LIMIT)
+    "entree": 0.00,                      // Prix exact d'entree
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
     "risque_rendement": 0.0,
-    "validation_macro": "OK"
+    "validation_macro": "REJECT"         // "OK" ou "REJECT"
 }
 
-REGLES D'ANALYSE CRUCIALES :
-1. Si le momentum ou la tendance est fort(e) et propre : privilegie type_ordre = "MARKET" au prix actuel pour ne pas rater le mouvement.
-2. Si le prix est dans une zone d'incertitude ou proche d'un obstacle immédiat : utilise type_ordre = "LIMIT" avec le prix exact d'entree attendu.
-3. Si le risque/rendement est mauvais (< 1.5) ou le signal suspect : passe status = "INVALID"."""
+REGLES D'ANALYSE STRICTES :
+1. Si le signal est ambigu, contre-tendance, ou que le ratio risque/rendement est inférieur à 1.5 : mets IMPÉRATIVEMENT status = "INVALID".
+2. Ne valide un trade qu'en cas d'alignement clair des indicateurs fournis dans le payload.
+3. En cas de doute, la sécurité prime : refuse le trade."""
 
 def process_claude_async(ticker, price, message, raw_payload):
     global LATEST_TRADE
@@ -43,37 +43,37 @@ def process_claude_async(ticker, price, message, raw_payload):
             "content-type": "application/json"
         }
 
+        # --- ENRICHISSEMENT DES DONNÉES ENVOYÉES À CLAUDE ---
+        # On transmet l'intégralité du payload TradingView (indicateurs, prix, message, etc.)
+        payload_str = json.dumps(raw_payload, ensure_ascii=False)
+        user_prompt = f"Ticker: {ticker}, Prix actuel: {price}\nPayload technique complet de TradingView: {payload_str}"
+
         payload = {
             "model": "claude-opus-5-5",
             "max_tokens": 600,
             "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": f"Ticker: {ticker}, Prix: {price}, Msg: {message}"}]
+            "messages": [{"role": "user", "content": user_prompt}]
         }
 
-        # URL protégée par concaténation contre les crochets parasites
         url = "https://api.anthropic.com" + "/v1/messages"
         resp = requests.post(url, headers=headers, json=payload)
+
+        trade_plan = None
 
         if resp.status_code == 200:
             resp_data = resp.json()
 
-            # Extraction propre du texte brut renvoyé par Claude
             raw_text = ""
             for block in resp_data.get("content", []):
                 if block.get("type") == "text":
                     raw_text = block.get("text", "")
                     break
 
-            # --- PRINT POUR AFFICHER LA RÉPONSE BRUTE DE CLAUDE DANS LES LOGS RENDER ---
             print("\n=================== [CLAUDE AI RESPONSE RAW] ===================")
             print(raw_text)
             print("=================================================================\n")
 
-            trade_plan = None
-
-            # SÉCURITÉ : Si Claude renvoie du texte, on le parse
             if raw_text.strip():
-                # Nettoyage des balises Markdown
                 cleaned_text = raw_text.strip()
                 cleaned_text = re.sub(r'^```json\s*', '', cleaned_text, flags=re.IGNORECASE)
                 cleaned_text = re.sub(r'^```\s*', '', cleaned_text, flags=re.IGNORECASE)
@@ -86,12 +86,10 @@ def process_claude_async(ticker, price, message, raw_payload):
                 if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                     json_str = cleaned_text[start_idx:end_idx+1]
                     try:
-                        # Correction pour les caractères unicode échappés
                         fixed_str = json_str.replace('\\\\u', '\\u')
                         trade_plan = json.loads(fixed_str)
                     except Exception:
                         try:
-                            # Nettoyage robustes des sauts de ligne non échappés à l'intérieur des chaînes JSON
                             sanitized = re.sub(r'(?<!\\)\n', ' ', json_str)
                             sanitized = re.sub(r'(?<!\\)\r', ' ', sanitized)
                             sanitized = re.sub(r'\s+', ' ', sanitized)
@@ -99,41 +97,37 @@ def process_claude_async(ticker, price, message, raw_payload):
                         except Exception:
                             pass
 
-            # Si le parsing ou le texte brut échoue, on applique le repli sécurisé demandé
-            if not trade_plan:
-                action_dir = raw_payload.get("action", "BUY")
-                trade_plan = {
-                    "status": "VALID",
-                    "direction": action_dir,
-                    "type_ordre": "MARKET",
-                    "zone_attente": "Niveau en cours",
-                    "declencheur": "Validation technique",
-                    "entree": float(price),
-                    "stop_loss": float(raw_payload.get("sl", 0.0)),
-                    "cible_1": float(raw_payload.get("tp", 0.0)),
-                    "raw_message": raw_text
-                }
+        # --- SÉCURITÉ INVERSÉE DU REPLI ---
+        # Si Claude échoue à répondre ou que le JSON est corrompu, on REJETTE par défaut (INVALID)
+        if not trade_plan:
+            print("[-] Avertissement : Échec de lecture du plan de Claude -> REJET PAR SÉCURITÉ.")
+            trade_plan = {
+                "status": "INVALID",
+                "direction": raw_payload.get("action", "BUY"),
+                "type_ordre": "MARKET",
+                "zone_attente": "Rejeté",
+                "declencheur": "Erreur de traitement ou format invalide",
+                "entree": float(price),
+                "stop_loss": 0.0,
+                "cible_1": 0.0,
+                "risque_rendement": 0.0,
+                "validation_macro": "REJECT"
+            }
 
-            # SÉCURITÉ GARANTIE : Si un prix numérique manque ou vaut 0, on le complète avec le payload initial
-            if "entree" not in trade_plan or float(trade_plan.get("entree", 0.0)) == 0.0:
-                trade_plan["entree"] = float(price)
-            if "stop_loss" not in trade_plan or float(trade_plan.get("stop_loss", 0.0)) == 0.0:
-                trade_plan["stop_loss"] = float(raw_payload.get("sl", 0.0))
-            if "cible_1" not in trade_plan or float(trade_plan.get("cible_1", 0.0)) == 0.0:
-                trade_plan["cible_1"] = float(raw_payload.get("tp", 0.0))
+        LATEST_TRADE = trade_plan
 
-            LATEST_TRADE = trade_plan
-
-            # --- PRINT POUR AFFICHER LA DÉCISION FINALE PARSÉE DANS LES LOGS RENDER ---
-            print("\n================ [CLAUDE AI DECISION PARSED] ================")
-            print(json.dumps(LATEST_TRADE, indent=2, ensure_ascii=False))
-            print("=============================================================\n")
-
-        else:
-            print(f"Erreur API Anthropic (Status {resp.status_code}) : {resp.text}")
+        print("\n================ [CLAUDE AI DECISION PARSED] ================")
+        print(json.dumps(LATEST_TRADE, indent=2, ensure_ascii=False))
+        print("=============================================================\n")
 
     except Exception as e:
-        print(f"Erreur arrière-plan Claude : {e}")
+        print(f"Erreur critique arrière-plan Claude : {e}")
+        # En cas d'exception globale, on bloque tout
+        LATEST_TRADE = {
+            "status": "INVALID",
+            "direction": "HOLD",
+            "declencheur": f"Exception critique: {str(e)}"
+        }
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -143,11 +137,10 @@ def webhook():
         price = data.get("price", 0.0)
         message = data.get("message", "Alerte")
 
-        # Lancement de l'analyse Claude en arrière-plan avec transmission du payload brut
+        # Lancement de l'analyse Claude en arrière-plan
         threading.Thread(target=process_claude_async, args=(ticker, price, message, data)).start()
 
-        # Réponse immédiate à TradingView (< 50ms) pour éviter le timeout
-        return jsonify({"status": "SUCCESS", "message": "Alerte reçue et en cours de traitement"}), 200
+        return jsonify({"status": "SUCCESS", "message": "Alerte reçue et en cours de filtration"}), 200
 
     except Exception as e:
         return jsonify({"status": "ERROR", "error": str(e)}), 400
