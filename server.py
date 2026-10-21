@@ -50,7 +50,7 @@ def process_claude_async(ticker, price, message, raw_payload):
 
         payload = {
             "model": "claude-opus-5-5",
-            "max_tokens": 600,
+            "max_tokens": 1000,
             "system": SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": user_prompt}]
         }
