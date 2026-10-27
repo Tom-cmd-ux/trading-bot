@@ -9,29 +9,29 @@ app = Flask(__name__)
 
 LATEST_TRADE = {"status": "INVALID", "action": "NONE"}
 
-# --- SYSTEM PROMPT ULTRA-SÉLECTIF ET CONTEXTUEL ---
-SYSTEM_PROMPT = """Tu es un gestionnaire de risque et analyste senior intransigeant sur XAUUSD.
-Ta mission est de filtrer drastiquement les alertes TradingView. Ton rôle par défaut est de REJETER le trade sauf si les conditions techniques et le ratio de risque sont exceptionnels.
+# --- SYSTEM PROMPT MIS À JOUR (Moins strict, tolérant sur le momentum) ---
+SYSTEM_PROMPT = """Tu es un analyste de trading senior sur XAUUSD pragmatique et orienté tendance.
+Ta mission est d'analyser les alertes TradingView en cherchant à **valider** les opportunités lorsque le marché montre une vraie force directionnelle (momentum).
 
 Analyse l'alerte et renvoie UNIQUEMENT un JSON strict avec la structure suivante (sans markdown ni texte additionnel) :
 {
-    "status": "INVALID",                 // "VALID" uniquement si le setup est parfait, sinon "INVALID" par défaut
-    "direction": "BUY",                  // "BUY" ou "SELL"
-    "type_ordre": "MARKET",              // "MARKET" ou "LIMIT"
-    "zone_attente": "Niveau precis",     // Le niveau de prix vise ou "Au marche"
+    "status": "VALID",                     // Mets "VALID" dès que la direction est soutenue par la tendance, ou "INVALID" si le signal est totalement incohérent
+    "direction": "BUY",                    // "BUY" ou "SELL"
+    "type_ordre": "MARKET",                // "MARKET" de préférence pour surfer les mouvements
+    "zone_attente": "Au marche",           // Niveau visé ou "Au marche"
     "declencheur": "Explication rapide",
-    "entree": 0.00,                      // Prix exact d'entree
+    "entree": 0.00,                        // Prix exact d'entree
     "stop_loss": 0.00,
     "cible_1": 0.00,
     "cible_2": 0.00,
     "risque_rendement": 0.0,
-    "validation_macro": "REJECT"         // "OK" ou "REJECT"
+    "validation_macro": "OK"               // "OK" par défaut si le mouvement est impulsif
 }
 
-REGLES D'ANALYSE STRICTES :
-1. Si le signal est ambigu, contre-tendance, ou que le ratio risque/rendement est inférieur à 1.5 : mets IMPÉRATIVEMENT status = "INVALID".
-2. Ne valide un trade qu'en cas d'alignement clair des indicateurs fournis dans le payload.
-3. En cas de doute, la sécurité prime : refuse le trade."""
+REGLES D'ANALYSE SOUPLES ET MOMENTUM :
+1. **Ne rejette PAS** un trade sous prétexte que le RSI est en zone de surachat (>70) ou de survente (<30) : une forte extension est souvent la signature d'un puissant momentum (cassure ou explosion des prix).
+2. Accepte les entrées au marché (MARKET) pour ne pas rater le début ou le milieu des grandes vagues directionnelles.
+3. Sois beaucoup moins frileux : tant que la tendance globale et le signal de l'alerte vont dans le même sens, autorise le trade (status = "VALID")."""
 
 def process_claude_async(ticker, price, message, raw_payload):
     global LATEST_TRADE
@@ -44,7 +44,6 @@ def process_claude_async(ticker, price, message, raw_payload):
         }
 
         # --- ENRICHISSEMENT DES DONNÉES ENVOYÉES À CLAUDE ---
-        # On transmet l'intégralité du payload TradingView (indicateurs, prix, message, etc.)
         payload_str = json.dumps(raw_payload, ensure_ascii=False)
         user_prompt = f"Ticker: {ticker}, Prix actuel: {price}\nPayload technique complet de TradingView: {payload_str}"
 
@@ -97,8 +96,7 @@ def process_claude_async(ticker, price, message, raw_payload):
                         except Exception:
                             pass
 
-        # --- SÉCURITÉ INVERSÉE DU REPLI ---
-        # Si Claude échoue à répondre ou que le JSON est corrompu, on REJETTE par défaut (INVALID)
+        # --- SÉCURITÉ DE SECOURS ---
         if not trade_plan:
             print("[-] Avertissement : Échec de lecture du plan de Claude -> REJET PAR SÉCURITÉ.")
             trade_plan = {
@@ -122,7 +120,6 @@ def process_claude_async(ticker, price, message, raw_payload):
 
     except Exception as e:
         print(f"Erreur critique arrière-plan Claude : {e}")
-        # En cas d'exception globale, on bloque tout
         LATEST_TRADE = {
             "status": "INVALID",
             "direction": "HOLD",
